@@ -1,3 +1,4 @@
 # 强制直连的域名
 payload:
   - DOMAIN,local.adguard.org
+  - DOMAIN-SUFFIX,ant.design
