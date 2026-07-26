@@ -1,0 +1,4 @@
+# 优先走“台湾策略”的域名。
+# 按需在下方添加规则，例如：
+#   - DOMAIN-SUFFIX,example.tw
+payload: []

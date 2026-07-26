@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>OpenClash 规则助手</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>加入 OpenClash 规则</h1>
+        <button id="open-options" class="link-button" type="button">设置</button>
+      </header>
+
+      <label for="domain">域名</label>
+      <input id="domain" type="text" autocomplete="off" spellcheck="false">
+
+      <label for="rule-type">规则类型</label>
+      <select id="rule-type">
+        <option value="DOMAIN-SUFFIX">域名及其子域名</option>
+        <option value="DOMAIN">仅当前主机名</option>
+      </select>
+
+      <label for="group">目标分组</label>
+      <select id="group">
+        <option value="direct">强制直连</option>
+        <option value="reject">强制拦截</option>
+        <option value="proxy">国外流量</option>
+        <option value="us">美国策略</option>
+        <option value="jp">日本策略</option>
+        <option value="tw">台湾策略</option>
+      </select>
+
+      <button id="save" class="primary" type="button">添加并推送到 GitHub</button>
+      <p id="status" role="status"></p>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "OpenClash 规则助手",
+  "description": "将当前网页域名快速添加到 GitHub 中维护的 OpenClash 规则文件。",
+  "version": "1.0.0",
+  "action": {
+    "default_title": "加入 OpenClash 规则",
+    "default_popup": "popup.html"
+  },
+  "options_page": "options.html",
+  "permissions": ["storage", "tabs"],
+  "host_permissions": ["https://api.github.com/*"]
+}

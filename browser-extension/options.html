@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>OpenClash 规则助手设置</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body class="options-page">
+    <main>
+      <h1>OpenClash 规则助手设置</h1>
+      <p class="hint">令牌仅保存于本浏览器本机，不会写入规则仓库。</p>
+
+      <label for="owner">GitHub 用户名或组织名</label>
+      <input id="owner" type="text" autocomplete="off" spellcheck="false" placeholder="例如：your-name">
+
+      <label for="repo">仓库名</label>
+      <input id="repo" type="text" autocomplete="off" spellcheck="false" value="openclash-rules">
+
+      <label for="branch">分支</label>
+      <input id="branch" type="text" autocomplete="off" spellcheck="false" value="main">
+
+      <label for="token">GitHub Fine-grained Personal Access Token</label>
+      <input id="token" type="password" autocomplete="off" placeholder="github_pat_...">
+      <p class="hint">令牌只需授予此仓库的 Contents：Read and write 权限。</p>
+
+      <button id="save-options" class="primary" type="button">保存设置</button>
+      <p id="status" role="status"></p>
+    </main>
+    <script src="options.js"></script>
+  </body>
+</html>
