@@ -1,0 +1,9 @@
+{
+  "name": "openclash-rules",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "create-template": "node scripts/create-template.mjs",
+    "update-proxies": "node scripts/update-proxies.mjs"
+  }
+}

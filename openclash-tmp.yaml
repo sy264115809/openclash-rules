@@ -1,0 +1,223 @@
+# 锚点配置
+x-url-test:     &url-test     { type: url-test, url: "https://www.gstatic.com/generate_204", interval: 300, empty-fallback: REJECT, include-all: true, hidden: true, tolerance: 50 }
+x-load-balance: &load-balance { type: load-balance, url: "https://www.gstatic.com/generate_204", interval: 300, empty-fallback: REJECT, include-all: true, hidden: true, strategy: consistent-hashing }
+x-fallback:     &fallback     { type: fallback, url: "https://www.gstatic.com/generate_204", interval: 300, empty-fallback: REJECT }
+
+x-filter-hk:    &filter-hk    "^(?i)(?=.*(香港|港深|深港|沪港|广港|陆港|(?<![a-zA-Z])(hk|hkg)(?![a-zA-Z])|hongkong|hong kong|🇭🇰))(?!.*(排除)).*$"
+x-filter-tw:    &filter-tw    "^(?i)(?=.*(台湾|台北|台中|台南|台东|湾湾|(?<![a-zA-Z])(tw|tpe|khh|tsa)(?![a-zA-Z])|taiwan|taipei|🇹🇼|🇼🇸))(?!.*(排除)).*$"
+x-filter-jp:    &filter-jp    "^(?i)(?=.*(日本|东京|大阪|京都|神奈川|琦玉|(?<![a-zA-Z])(jp|nrt|hnd|kix|cts|fuk)(?![a-zA-Z])|japan|tokyo|🇯🇵))(?!.*(排除)).*$"
+x-filter-sg:    &filter-sg    "^(?i)(?=.*(新加坡|坡县|坡|狮城|(?<![a-zA-Z])(sg|sin|xsp)(?![a-zA-Z])|singapore|🇸🇬))(?!.*(排除)).*$"
+x-filter-kr:    &filter-kr    "^(?i)(?=.*(韩国|韓國|首尔|首爾|南朝鲜|(?<![a-zA-Z])(kr|icn|gmp|pus)(?![a-zA-Z])|korea|seoul|🇰🇷))(?!.*(排除)).*$"
+x-filter-us:    &filter-us    "^(?i)(?=.*(美国|美东|美西|美中|美南|美港|美日|中美|美专|(?<![a-zA-Z])(us|usa|lax|sfo|jfk|sjc)(?![a-zA-Z])|america|united states|🇺🇸))(?!.*(排除)).*$"
+x-filter-other: &filter-other "^(?i)(?=.*(加拿大|英国|法国|德国|菲律宾|荷兰|土耳其|越南|马来西亚|泰国|canada|great britain|france|germany|philippines|netherlands|turkey|vietnam|malaysia|thailand|🇨🇦|🇬🇧|🇫🇷|🇩🇪|🇵🇭|🇳🇱|🇹🇷|🇻🇳|🇲🇾|🇹🇭))(?!.*(排除)).*$"
+
+x-oversea:      &oversea      [故障转移, 全球手动, 香港策略, 台湾策略, 日本策略, 狮城策略, 韩国策略, 美国策略, 其他地区策略, DIRECT]
+x-direct:       &direct       [DIRECT, 故障转移, 全球手动, 香港策略, 台湾策略, 日本策略, 狮城策略, 韩国策略, 美国策略, 其他地区策略]
+x-us-first:     &us-first     [美国策略, 故障转移, 全球手动, 香港策略, 台湾策略, 日本策略, 狮城策略, 韩国策略, 其他地区策略, DIRECT]
+x-hk-first:     &hk-first     [香港策略, 故障转移, 全球手动, 台湾策略, 日本策略, 狮城策略, 韩国策略, 美国策略, 其他地区策略, DIRECT]
+x-sg-first:     &sg-first     [狮城策略, 故障转移, 全球手动, 香港策略, 台湾策略, 日本策略, 韩国策略, 美国策略, 其他地区策略, DIRECT]
+x-jp-first:     &jp-first     [日本策略, 故障转移, 全球手动, 香港策略, 台湾策略, 狮城策略, 韩国策略, 美国策略, 其他地区策略, DIRECT]
+
+x-rule-set-domain: &rule-set-domain { type: http, behavior: domain, format: mrs, interval: 86400 }
+x-rule-set-ipcidr: &rule-set-ipcidr { type: http, behavior: ipcidr, format: mrs, interval: 86400 }
+x-rule-set-custom: &rule-set-custom { type: http, behavior: classical, format: yaml, interval: 3600 }
+
+# 基础设置
+mixed-port: 7890
+allow-lan: true
+bind-address: '*'
+mode: rule
+log-level: info
+ipv6: false
+# 仅供 OpenClash 在本机连接 Mihomo 控制器使用。
+external-controller: 127.0.0.1:9090
+secret: ''
+profile:
+    store-selected: true
+    tracing: false
+    store-fake-ip: false
+unified-delay: true
+hosts:
+    localhost.localhost: 127.0.0.1
+    
+# DNS设置    
+dns:
+    enable: true
+    ipv6: false
+    listen: '0.0.0.0:1053'
+    enhanced-mode: fake-ip
+    fake-ip-range: 198.18.0.1/16
+    use-hosts: true
+    default-nameserver: [223.5.5.5, 119.29.29.29]
+    proxy-server-nameserver: [223.5.5.5, 119.29.29.29]
+    nameserver: [223.5.5.5, 223.6.6.6]
+    fake-ip-filter: ['*.lan', localhost.ptlogin2.qq.com, dns.msftncsi.com, '*.srv.nintendo.net', '*.stun.playstation.net', 'xbox.*.microsoft.com', '*.xboxlive.com']
+    fallback: [1.1.1.1, 8.8.8.8]
+    fallback-filter: { geoip: true, geoip-code: CN, ipcidr: [240.0.0.0/4] }
+
+# 节点由 scripts/update-proxies.mjs 生成时填充；请勿提交生成的 dist 文件。
+# __PROXIES_PLACEHOLDER__
+
+# 代理策略组
+proxy-groups:
+  # 路由策略
+  - { name: 广告拦截, type: select, proxies: [REJECT-DROP, REJECT, DIRECT], icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/Reject.png }
+  - { name: 网络测试, type: select, proxies: *oversea, icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/Speedtest.png }
+  - { name: 即时通讯, type: select, proxies: *sg-first, icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/Telegram_X.png }
+  - { name: 社交平台, type: select, proxies: *us-first, icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/Twitter.png }
+  - { name: 人工智能, type: select, proxies: *us-first, icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/AI.png }
+  - { name: 开发服务, type: select, proxies: *us-first, icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/GitHub.png }
+  - { name: EMBY,    type: select, proxies: *us-first, icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/Emby.png }
+  - { name: 国际媒体, type: select, proxies: *us-first, icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/Streaming.png }
+  - { name: 游戏平台, type: select, proxies: *us-first, icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/Game.png }
+  - { name: 货币平台, type: select, proxies: *jp-first, icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/Cryptocurrency_3.png }
+  - { name: 谷歌服务, type: select, proxies: *us-first, icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/Google_Search.png }
+  - { name: 脸书服务, type: select, proxies: *us-first, icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/Facebook.png }
+  - { name: 微软服务, type: select, proxies: *us-first, icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/Microsoft.png }
+  - { name: 苹果服务, type: select, proxies: *direct, icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/Apple_1.png }
+  - { name: 国外流量, type: select, proxies: *oversea, icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/Global.png }
+  - { name: 国内流量, type: select, proxies: *direct, icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/China.png }
+  - { name: 漏网之鱼, type: select, proxies: *oversea, icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/Final.png }
+  
+  # 自动选择
+  - { name: 故障转移, <<: *fallback, proxies: [美国策略, 日本策略, 狮城策略, 韩国策略, 香港策略, 台湾策略, 其他地区策略], icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/ULB.png }
+
+  # 手动选择
+  - { name: 全球手动, type: select, include-all: true, icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/Clubhouse.png }
+  
+  # 策略组区域
+  - { name: 香港策略, type: select, include-all: true, filter: *filter-hk, proxies: [香港自动, 香港均衡], icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/Hong_Kong.png }
+  - { name: 台湾策略, type: select, include-all: true, filter: *filter-tw, proxies: [台湾自动, 台湾均衡], icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/Taiwan.png }
+  - { name: 日本策略, type: select, include-all: true, filter: *filter-jp, proxies: [日本自动, 日本均衡], icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/Japan.png }
+  - { name: 狮城策略, type: select, include-all: true, filter: *filter-sg, proxies: [狮城自动, 狮城均衡], icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/Singapore.png }
+  - { name: 韩国策略, type: select, include-all: true, filter: *filter-kr, proxies: [韩国自动, 韩国均衡], icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/Korea.png }
+  - { name: 美国策略, type: select, include-all: true, filter: *filter-us, proxies: [美国自动, 美国均衡], icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/United_States.png }
+  - { name: 其他地区策略, type: select, include-all: true, filter: *filter-other, proxies: [其他地区自动, 其他地区均衡] }
+
+  # 自动测速
+  - { name: 香港自动, <<: *url-test, filter: *filter-hk, icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/Auto.png }
+  - { name: 台湾自动, <<: *url-test, filter: *filter-tw, icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/Auto.png }
+  - { name: 日本自动, <<: *url-test, filter: *filter-jp, icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/Auto.png }
+  - { name: 狮城自动, <<: *url-test, filter: *filter-sg, icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/Auto.png }
+  - { name: 韩国自动, <<: *url-test, filter: *filter-kr, icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/Auto.png }
+  - { name: 美国自动, <<: *url-test, filter: *filter-us, icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/Auto.png }
+  - { name: 其他地区自动, <<: *url-test, filter: *filter-other }
+
+  # 负载均衡
+  - { name: 香港均衡, <<: *load-balance, filter: *filter-hk, icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/Round_Robin_1.png }
+  - { name: 台湾均衡, <<: *load-balance, filter: *filter-tw, icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/Round_Robin_1.png }
+  - { name: 日本均衡, <<: *load-balance, filter: *filter-jp, icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/Round_Robin_1.png }
+  - { name: 狮城均衡, <<: *load-balance, filter: *filter-sg, icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/Round_Robin_1.png }
+  - { name: 韩国均衡, <<: *load-balance, filter: *filter-kr, icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/Round_Robin_1.png }
+  - { name: 美国均衡, <<: *load-balance, filter: *filter-us, icon: https://github.com/Koolson/Qure/raw/master/IconSet/Color/Round_Robin_1.png }
+  - { name: 其他地区均衡, <<: *load-balance, filter: *filter-other }
+
+# 规则集提供者
+rule-providers:
+  CustomReject: { <<: *rule-set-custom, path: ./ruleset/custom-reject.yaml, url: https://raw.githubusercontent.com/sy264115809/openclash-rules/main/rules/reject.yaml }
+  CustomDirect: { <<: *rule-set-custom, path: ./ruleset/custom-direct.yaml, url: https://raw.githubusercontent.com/sy264115809/openclash-rules/main/rules/direct.yaml }
+  CustomProxy:  { <<: *rule-set-custom, path: ./ruleset/custom-proxy.yaml,  url: https://raw.githubusercontent.com/sy264115809/openclash-rules/main/rules/proxy.yaml }
+  CustomUS:     { <<: *rule-set-custom, path: ./ruleset/custom-us.yaml,     url: https://raw.githubusercontent.com/sy264115809/openclash-rules/main/rules/us.yaml }
+  CustomJP:     { <<: *rule-set-custom, path: ./ruleset/custom-jp.yaml,     url: https://raw.githubusercontent.com/sy264115809/openclash-rules/main/rules/jp.yaml }
+  CustomTW:     { <<: *rule-set-custom, path: ./ruleset/custom-tw.yaml,     url: https://raw.githubusercontent.com/sy264115809/openclash-rules/main/rules/tw.yaml }
+
+  Tracking:       { <<: *rule-set-domain, url: https://github.com/666OS/rules/raw/release/mihomo/domain/Tracking.mrs }
+  Advertising:    { <<: *rule-set-domain, url: https://github.com/666OS/rules/raw/release/mihomo/domain/Advertising.mrs } 
+  Private:        { <<: *rule-set-domain, url: https://github.com/666OS/rules/raw/release/mihomo/domain/Private.mrs }
+  Apple:          { <<: *rule-set-domain, url: https://github.com/666OS/rules/raw/release/mihomo/domain/Apple.mrs }
+  Telegram:       { <<: *rule-set-domain, url: https://github.com/666OS/rules/raw/release/mihomo/domain/Telegram.mrs }
+  TM:             { <<: *rule-set-domain, url: https://github.com/666OS/rules/raw/release/mihomo/domain/TM.mrs }
+  SocialMedia:    { <<: *rule-set-domain, url: https://github.com/666OS/rules/raw/release/mihomo/domain/SocialMedia.mrs }
+  AI:             { <<: *rule-set-domain, url: https://github.com/666OS/rules/raw/release/mihomo/domain/AI.mrs }
+  Dev:            { <<: *rule-set-domain, url: https://github.com/666OS/rules/raw/release/mihomo/domain/Dev.mrs }
+  YouTube:        { <<: *rule-set-domain, url: https://github.com/666OS/rules/raw/release/mihomo/domain/YouTube.mrs }
+  Netflix:        { <<: *rule-set-domain, url: https://github.com/666OS/rules/raw/release/mihomo/domain/Netflix.mrs }
+  Spotify:        { <<: *rule-set-domain, url: https://github.com/666OS/rules/raw/release/mihomo/domain/Spotify.mrs }
+  Disney:         { <<: *rule-set-domain, url: https://github.com/666OS/rules/raw/release/mihomo/domain/Disney.mrs }
+  Emby:           { <<: *rule-set-domain, url: https://github.com/666OS/rules/raw/release/mihomo/domain/Emby.mrs }
+  Streaming:      { <<: *rule-set-domain, url: https://github.com/666OS/rules/raw/release/mihomo/domain/Streaming.mrs }
+  Proxy:          { <<: *rule-set-domain, url: https://github.com/666OS/rules/raw/release/mihomo/domain/Proxy.mrs }
+  China:          { <<: *rule-set-domain, url: https://github.com/666OS/rules/raw/release/mihomo/domain/China.mrs }
+  Speedtest:      { <<: *rule-set-domain, url: https://github.com/666OS/rules/raw/release/mihomo/domain/Speedtest.mrs }
+  Games:          { <<: *rule-set-domain, url: https://github.com/666OS/rules/raw/release/mihomo/domain/Games.mrs }
+  Crypto:         { <<: *rule-set-domain, url: https://github.com/666OS/rules/raw/release/mihomo/domain/Crypto.mrs }
+  Google:         { <<: *rule-set-domain, url: https://github.com/666OS/rules/raw/release/mihomo/domain/Google.mrs }
+  Microsoft:      { <<: *rule-set-domain, url: https://github.com/666OS/rules/raw/release/mihomo/domain/Microsoft.mrs }
+  Facebook:       { <<: *rule-set-domain, url: https://github.com/666OS/rules/raw/release/mihomo/domain/Facebook.mrs }
+  PrivateIP:      { <<: *rule-set-ipcidr, url: https://github.com/666OS/rules/raw/release/mihomo/ip/Private.mrs }
+  TelegramIP:     { <<: *rule-set-ipcidr, url: https://github.com/666OS/rules/raw/release/mihomo/ip/Telegram.mrs }
+  SocialMediaIP:  { <<: *rule-set-ipcidr, url: https://github.com/666OS/rules/raw/release/mihomo/ip/SocialMedia.mrs }
+  AIIP:           { <<: *rule-set-ipcidr, url: https://github.com/666OS/rules/raw/release/mihomo/ip/AI.mrs }
+  NetflixIP:      { <<: *rule-set-ipcidr, url: https://github.com/666OS/rules/raw/release/mihomo/ip/Netflix.mrs }
+  EmbyIP:         { <<: *rule-set-ipcidr, url: https://github.com/666OS/rules/raw/release/mihomo/ip/Emby.mrs }
+  StreamingIP:    { <<: *rule-set-ipcidr, url: https://github.com/666OS/rules/raw/release/mihomo/ip/Streaming.mrs }
+  ProxyIP:        { <<: *rule-set-ipcidr, url: https://github.com/666OS/rules/raw/release/mihomo/ip/Proxy.mrs }
+  ChinaIP:        { <<: *rule-set-ipcidr, url: https://github.com/666OS/rules/raw/release/mihomo/ip/China.mrs }
+  GoogleIP:       { <<: *rule-set-ipcidr, url: https://github.com/666OS/rules/raw/release/mihomo/ip/Google.mrs }
+
+# 规则路由
+rules:
+  # 个人规则：置顶以优先于通用规则集
+  - RULE-SET,CustomReject,REJECT
+  - RULE-SET,CustomDirect,DIRECT
+  - RULE-SET,CustomUS,美国策略
+  - RULE-SET,CustomJP,日本策略
+  - RULE-SET,CustomTW,台湾策略
+  - RULE-SET,CustomProxy,国外流量
+
+  # 广告拦截
+  - RULE-SET,Tracking,广告拦截
+  - RULE-SET,Advertising,广告拦截
+  
+  # 本地/私有
+  - RULE-SET,Private,DIRECT
+  - RULE-SET,PrivateIP,DIRECT,no-resolve
+
+  # 网络测试
+  - RULE-SET,Speedtest,网络测试
+
+  # 即时通讯
+  - RULE-SET,TM,即时通讯
+  - RULE-SET,Telegram,即时通讯
+  - RULE-SET,TelegramIP,即时通讯,no-resolve
+
+  # 社交平台
+  - RULE-SET,SocialMedia,社交平台
+  - RULE-SET,SocialMediaIP,社交平台,no-resolve
+
+  # 人工智能
+  - RULE-SET,AI,人工智能
+  - RULE-SET,AIIP,人工智能,no-resolve
+
+  # 开发服务
+  - RULE-SET,Dev,开发服务
+
+  # 国际媒体
+  - RULE-SET,Emby,EMBY
+  - RULE-SET,EmbyIP,EMBY,no-resolve
+  - RULE-SET,Streaming,国际媒体
+  - RULE-SET,StreamingIP,国际媒体,no-resolve
+
+  # 游戏平台
+  - RULE-SET,Games,游戏平台
+
+  # 货币平台
+  - RULE-SET,Crypto,货币平台
+
+  # 平台服务
+  - RULE-SET,Google,谷歌服务
+  - RULE-SET,GoogleIP,谷歌服务,no-resolve
+  - RULE-SET,Microsoft,微软服务
+  - RULE-SET,Facebook,脸书服务
+  - RULE-SET,Apple,苹果服务
+
+  # 国外流量
+  - RULE-SET,Proxy,国外流量
+  - RULE-SET,ProxyIP,国外流量,no-resolve
+
+  # 国内流量
+  - RULE-SET,China,国内流量
+  - RULE-SET,ChinaIP,国内流量,no-resolve
+
+  # 兜底规则
+  - MATCH,漏网之鱼

@@ -1,0 +1,3 @@
+# 本地根据临时订阅生成的完整 OpenClash 配置，含节点凭据，不提交。
+dist/
+node_modules/
