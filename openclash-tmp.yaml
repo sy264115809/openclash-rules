@@ -20,7 +20,7 @@ x-jp-first:     &jp-first     [日本策略, 故障转移, 全球手动, 香港�
 
 x-rule-set-domain: &rule-set-domain { type: http, behavior: domain, format: mrs, interval: 86400 }
 x-rule-set-ipcidr: &rule-set-ipcidr { type: http, behavior: ipcidr, format: mrs, interval: 86400 }
-x-rule-set-custom: &rule-set-custom { type: http, behavior: classical, format: yaml, interval: 3600 }
+x-rule-set-custom: &rule-set-custom { type: http, behavior: classical, format: yaml, interval: 86400 }
 
 # 基础设置
 mixed-port: 7890
