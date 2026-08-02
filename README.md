@@ -23,6 +23,8 @@
 npm run update-proxies
 ```
 
+主订阅输入完成后，脚本还会询问要注入 `proxy-providers.Primary` 的订阅 URL。交互输入优先级最高；直接回车时依次读取 `subscription/sub-inject.txt`、`subscription/inject.txt`。模板本身只保留空注入标记，实际 URL 仅写入已被 Git 忽略的 `dist` 配置。详细规则见 [`subscription/README.md`](subscription/README.md)。
+
 每次请求的原始响应会同时保存为 `dist/subscription-YYYYDDMM.txt`，即使解析失败也会保留，便于本地排查订阅格式。该目录已在 `.gitignore` 中忽略，且文件权限仅限当前用户读取；其中可能含有节点凭据，请勿分享或提交。
 
 脚本也支持 Base64 编码的 AnyTLS URI 订阅，会转换为 Mihomo 的 `proxies` YAML 节点。其他 URI 类型请在机场面板切换为 Clash/Mihomo YAML 格式后再使用。

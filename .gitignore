@@ -1,3 +1,6 @@
 # 本地根据临时订阅生成的完整 OpenClash 配置，含节点凭据，不提交。
 dist/
 node_modules/
+
+# 本地订阅注入地址，可能包含访问凭据。
+subscription/*.txt

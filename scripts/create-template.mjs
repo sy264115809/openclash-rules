@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { renderProxyProviders } from "./subscription-providers.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const [sourceArgument, targetArgument] = process.argv.slice(2);
@@ -37,5 +38,19 @@ const replacement = [
   "# __PROXIES_PLACEHOLDER__\n",
   "\n"
 ];
-fs.writeFileSync(target, [...lines.slice(0, start), ...replacement, ...lines.slice(finish)].join(""), "utf8");
+let template = [...lines.slice(0, start), ...replacement, ...lines.slice(finish)].join("");
+const providerBlock = renderProxyProviders();
+const providerStart = template.indexOf("# __PROXY_PROVIDERS_START__");
+const providerEndMarker = "# __PROXY_PROVIDERS_END__";
+const providerEnd = template.indexOf(providerEndMarker);
+
+if (providerStart >= 0 && providerEnd >= providerStart) {
+  template = `${template.slice(0, providerStart)}${providerBlock.trimEnd()}${template.slice(providerEnd + providerEndMarker.length)}`;
+} else {
+  const placeholder = "# 节点由 scripts/update-proxies.mjs 生成时填充；请勿提交生成的 dist 文件。";
+  template = template.replace(placeholder, `${providerBlock}\n${placeholder}`);
+}
+
+fs.writeFileSync(target, template, "utf8");
 console.log(`已生成不含节点的模板：${target}`);
+console.log("模板中的 proxy-providers 注入区已清空；实际 URL 仅在生成 dist 配置时写入。");

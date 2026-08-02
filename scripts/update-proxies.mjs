@@ -3,6 +3,11 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import {
+  findInjectedSubscriptionUrl,
+  replaceProxyProviders,
+  validateSubscriptionUrl
+} from "./subscription-providers.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const templatePath = path.join(root, "openclash-tmp.yaml");
@@ -199,6 +204,7 @@ try {
   }
 
   let subscriptionContent;
+  let interactiveProviderUrl = null;
   if (responseFile) {
     const inputPath = path.resolve(responseFile);
     if (!fs.existsSync(inputPath)) fail(`找不到原始响应文件：${inputPath}`);
@@ -208,7 +214,16 @@ try {
     const url = await promptHidden("请输入有效的 Clash/Mihomo 订阅地址（输入不会回显）：\n> ");
     if (!/^https?:\/\//i.test(url)) fail("订阅地址必须以 http:// 或 https:// 开头。");
     subscriptionContent = await download(url);
+
+    const providerInput = await promptHidden("请输入要注入 Primary 的订阅地址（留空则依次读取 subscription/sub-inject.txt、subscription/inject.txt，输入不会回显）：\n> ");
+    if (providerInput) {
+      interactiveProviderUrl = validateSubscriptionUrl(providerInput);
+      if (!interactiveProviderUrl) fail("Primary 订阅地址必须是有效的 http:// 或 https:// URL。");
+    }
   }
+
+  const injectedSubscription = interactiveProviderUrl ? null : findInjectedSubscriptionUrl(root);
+  const primaryUrl = interactiveProviderUrl || injectedSubscription?.url || null;
 
   fs.mkdirSync(distDir, { recursive: true });
   const rawResponsePath = path.join(distDir, rawResponseFileName(runDate));
@@ -217,8 +232,9 @@ try {
 
   const { block: proxyBlock, nodeCount, source } = extractProxyBlock(subscriptionContent);
 
-  const template = fs.readFileSync(templatePath, "utf8");
+  let template = fs.readFileSync(templatePath, "utf8");
   if (!template.includes(marker)) fail("模板中未找到节点占位符。");
+  template = replaceProxyProviders(template, { primaryUrl });
   const output = template.replace(marker, proxyBlock);
   if ((output.match(/^proxies:\s*$/gm) || []).length !== 1) fail("生成配置中的 proxies: 块数量校验失败。");
 
@@ -228,6 +244,8 @@ try {
   fs.renameSync(temporaryPath, outputPath);
   console.log(`已生成：${outputPath}（${nodeCount} 个节点）`);
   console.log(`节点来源：${source}`);
+  if (interactiveProviderUrl) console.log("已注入交互输入的 Primary 订阅。");
+  else if (injectedSubscription) console.log(`已注入 Primary 订阅：subscription/${injectedSubscription.name}`);
   console.log("订阅地址未写入仓库；原始响应仅保存在已忽略的 dist 目录。");
 } catch (error) {
   fail(error.message);
