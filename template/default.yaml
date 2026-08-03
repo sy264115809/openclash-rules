@@ -22,7 +22,6 @@ x-jp-first:     &jp-first     [日本策略, 故障转移, 全球手动, 香港�
 
 x-rule-set-domain: &rule-set-domain { type: http, behavior: domain, format: mrs, interval: 86400 }
 x-rule-set-ipcidr: &rule-set-ipcidr { type: http, behavior: ipcidr, format: mrs, interval: 86400 }
-x-rule-set-custom: &rule-set-custom { type: http, behavior: classical, format: yaml, interval: 86400 }
 
 # 基础设置
 mixed-port: 7890
@@ -60,6 +59,7 @@ dns:
 proxy-providers:
   # 本地模板不保存订阅地址；生成 dist 配置时按订阅内容与本地注入设置合并。
 
+proxies:
 # 节点由 scripts/update-proxies.mjs 生成时填充；请勿提交生成的 dist 文件。
 # __PROXIES_PLACEHOLDER__
 
@@ -119,13 +119,6 @@ proxy-groups:
 
 # 规则集提供者
 rule-providers:
-  CustomReject: { <<: *rule-set-custom, path: ./ruleset/custom-reject.yaml, url: https://raw.githubusercontent.com/sy264115809/openclash-rules/main/rules/reject.yaml }
-  CustomDirect: { <<: *rule-set-custom, path: ./ruleset/custom-direct.yaml, url: https://raw.githubusercontent.com/sy264115809/openclash-rules/main/rules/direct.yaml }
-  CustomProxy:  { <<: *rule-set-custom, path: ./ruleset/custom-proxy.yaml,  url: https://raw.githubusercontent.com/sy264115809/openclash-rules/main/rules/proxy.yaml }
-  CustomUS:     { <<: *rule-set-custom, path: ./ruleset/custom-us.yaml,     url: https://raw.githubusercontent.com/sy264115809/openclash-rules/main/rules/us.yaml }
-  CustomJP:     { <<: *rule-set-custom, path: ./ruleset/custom-jp.yaml,     url: https://raw.githubusercontent.com/sy264115809/openclash-rules/main/rules/jp.yaml }
-  CustomTW:     { <<: *rule-set-custom, path: ./ruleset/custom-tw.yaml,     url: https://raw.githubusercontent.com/sy264115809/openclash-rules/main/rules/tw.yaml }
-
   Tracking:       { <<: *rule-set-domain, url: https://github.com/666OS/rules/raw/release/mihomo/domain/Tracking.mrs }
   Advertising:    { <<: *rule-set-domain, url: https://github.com/666OS/rules/raw/release/mihomo/domain/Advertising.mrs } 
   Private:        { <<: *rule-set-domain, url: https://github.com/666OS/rules/raw/release/mihomo/domain/Private.mrs }
@@ -162,14 +155,6 @@ rule-providers:
 
 # 规则路由
 rules:
-  # 个人规则：置顶以优先于通用规则集
-  - RULE-SET,CustomReject,REJECT
-  - RULE-SET,CustomDirect,DIRECT
-  - RULE-SET,CustomUS,美国策略
-  - RULE-SET,CustomJP,日本策略
-  - RULE-SET,CustomTW,台湾策略
-  - RULE-SET,CustomProxy,国外流量
-
   # 广告拦截
   - RULE-SET,Tracking,广告拦截
   - RULE-SET,Advertising,广告拦截

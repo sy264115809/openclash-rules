@@ -1,0 +1,23 @@
+# 个人 Custom 片段
+# 此文件会在生成 OpenClash 配置时叠加到所选模板：
+# - x-rule-set-custom 锚点
+# - Custom* rule-providers
+# - 置顶的 Custom* rules
+
+x-rule-set-custom: &rule-set-custom { type: http, behavior: classical, format: yaml, interval: 86400 }
+
+rule-providers:
+  CustomReject: { <<: *rule-set-custom, path: ./ruleset/custom-reject.yaml, url: https://raw.githubusercontent.com/sy264115809/openclash-rules/main/rules/reject.yaml }
+  CustomDirect: { <<: *rule-set-custom, path: ./ruleset/custom-direct.yaml, url: https://raw.githubusercontent.com/sy264115809/openclash-rules/main/rules/direct.yaml }
+  CustomProxy:  { <<: *rule-set-custom, path: ./ruleset/custom-proxy.yaml,  url: https://raw.githubusercontent.com/sy264115809/openclash-rules/main/rules/proxy.yaml }
+  CustomUS:     { <<: *rule-set-custom, path: ./ruleset/custom-us.yaml,     url: https://raw.githubusercontent.com/sy264115809/openclash-rules/main/rules/us.yaml }
+  CustomJP:     { <<: *rule-set-custom, path: ./ruleset/custom-jp.yaml,     url: https://raw.githubusercontent.com/sy264115809/openclash-rules/main/rules/jp.yaml }
+  CustomTW:     { <<: *rule-set-custom, path: ./ruleset/custom-tw.yaml,     url: https://raw.githubusercontent.com/sy264115809/openclash-rules/main/rules/tw.yaml }
+
+rules:
+  - RULE-SET,CustomReject,REJECT
+  - RULE-SET,CustomDirect,DIRECT
+  - RULE-SET,CustomUS,美国策略
+  - RULE-SET,CustomJP,日本策略
+  - RULE-SET,CustomTW,台湾策略
+  - RULE-SET,CustomProxy,国外流量

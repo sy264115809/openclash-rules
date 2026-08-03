@@ -20,14 +20,14 @@ export function replaceTopLevelSection(text, name, replacement) {
   return [...lines.slice(0, section.start), ...linesOf(replacement), ...lines.slice(section.finish)].join("");
 }
 
-export function customFragments(localTemplate) {
-  const customAnchor = localTemplate.match(/^x-rule-set-custom:.*$/m)?.[0] || null;
-  const providerSection = topLevelSection(localTemplate, "rule-providers");
-  const ruleSection = topLevelSection(localTemplate, "rules");
+export function customFragments(customTemplate) {
+  const customAnchor = customTemplate.match(/^x-rule-set-custom:.*$/m)?.[0] || null;
+  const providerSection = topLevelSection(customTemplate, "rule-providers");
+  const ruleSection = topLevelSection(customTemplate, "rules");
   const providers = providerSection ? providerSection.body.filter((line) => /^\s{2}Custom[A-Za-z]+:/.test(line)) : [];
   const rules = ruleSection ? ruleSection.body.filter((line) => /^\s{2}- RULE-SET,Custom[A-Za-z]+,/.test(line)) : [];
   if (!customAnchor || providers.length === 0 || rules.length === 0) {
-    throw new Error("本地模板缺少完整的 Custom 锚点、规则提供者或规则片段。");
+    throw new Error("template/custom.yaml 缺少完整的 Custom 锚点、规则提供者或规则片段。");
   }
   return { customAnchor, providers, rules };
 }
@@ -71,8 +71,8 @@ function injectProxyBlock(template, proxyBlock) {
   throw new Error("模板中未找到 proxies: 块或节点占位符。");
 }
 
-export function composeTemplate({ remoteTemplate, localTemplate, proxyBlock, parsedProviders, primaryUrl }) {
-  const custom = customFragments(localTemplate);
+export function composeTemplate({ remoteTemplate, customTemplate, proxyBlock, parsedProviders, primaryUrl }) {
+  const custom = customFragments(customTemplate);
   let output = ensureCustomAnchor(remoteTemplate.replace(/^\uFEFF/, ""), custom.customAnchor);
   output = replaceTopLevelSection(output, "proxy-providers", composeProviders(parsedProviders, primaryUrl));
   output = injectProxyBlock(output, proxyBlock);

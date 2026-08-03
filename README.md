@@ -17,7 +17,7 @@
 
 ## 更新临时订阅节点
 
-脚本默认提供 [666OS/YYDS 中文模板](https://github.com/666OS/YYDS/tree/main/mihomo/config/cn) 的远程选择：Pro、Lite、Mini；也可选择本地 `openclash-tmp.yaml`。运行时会交互式选择模板、读取一次性订阅地址，并在不纳入 Git 的 `dist/subcription-YYYYMMDD/` 目录生成完整配置：
+脚本默认提供 [666OS/YYDS 中文模板](https://github.com/666OS/YYDS/tree/main/mihomo/config/cn) 的远程选择：Pro、Lite、Mini；也可选择本地 `template/default.yaml`。运行时会交互式选择模板、读取一次性订阅地址，并在不纳入 Git 的 `dist/subcription-YYYYMMDD/` 目录生成完整配置：
 
 ```bash
 npm run update-proxies
@@ -32,7 +32,7 @@ npm run update-proxies -- --template mini
 npm run update-proxies -- --template local
 ```
 
-远程模板生成时，脚本会叠加本地 `openclash-tmp.yaml` 中的 `Custom` 片段：`x-rule-set-custom`、`Custom*` 规则提供者和置顶的 `Custom*` 规则。订阅内容中的 `proxies:` 与 `proxy-providers:` 也会一并注入输出；本地 `subscription/sub-inject.txt` 中的 Primary 地址仍会合并，除非订阅本身已定义 `Primary`。
+生成时会将 `template/custom.yaml` 的 `Custom` 片段叠加到选定的基础模板：`x-rule-set-custom`、`Custom*` 规则提供者和置顶的 `Custom*` 规则。无论选择远程模板还是本地 `template/default.yaml`，规则均以该文件为准。订阅内容中的 `proxies:` 与 `proxy-providers:` 也会一并注入输出；本地 `subscription/sub-inject.txt` 中的 Primary 地址仍会合并，除非订阅本身已定义 `Primary`。
 
 主订阅输入完成后，脚本还会询问要注入 `proxy-providers.Primary` 的订阅 URL。交互输入优先级最高；直接回车时依次读取 `subscription/sub-inject.txt`、`subscription/inject.txt`。模板本身只保留空注入标记，实际 URL 仅写入已被 Git 忽略的 `dist` 配置。详细规则见 [`subscription/README.md`](subscription/README.md)。
 

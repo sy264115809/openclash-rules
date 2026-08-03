@@ -11,7 +11,9 @@ import {
 import { composeTemplate, topLevelSection } from "./template-composer.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const localTemplatePath = path.join(root, "openclash-tmp.yaml");
+const templateDir = path.join(root, "template");
+const defaultTemplatePath = path.join(templateDir, "default.yaml");
+const customTemplatePath = path.join(templateDir, "custom.yaml");
 const distDir = path.join(root, "dist");
 const remoteTemplates = {
   pro: { label: "Pro", url: "https://raw.githubusercontent.com/666OS/YYDS/main/mihomo/config/cn/Pro_cn.yaml" },
@@ -108,7 +110,7 @@ async function chooseTemplate() {
     selection = ({ "": "pro", "1": "pro", "2": "lite", "3": "mini", "4": "local", pro: "pro", lite: "lite", mini: "mini", local: "local" })[answer.toLowerCase()];
     if (!selection) fail("无效的模板选择。");
   }
-  if (selection === "local") return { name: "本地", content: fs.readFileSync(localTemplatePath, "utf8") };
+  if (selection === "local") return { name: "本地", content: fs.readFileSync(defaultTemplatePath, "utf8") };
   const descriptor = remoteTemplates[selection];
   return { name: `${descriptor.label}（远程）`, content: await download(descriptor.url, `${descriptor.label} 模板`) };
 }
@@ -309,7 +311,8 @@ function loadLatestParsedResult() {
   };
 }
 
-if (!fs.existsSync(localTemplatePath)) fail(`找不到本地 Custom 模板：${localTemplatePath}`);
+if (!fs.existsSync(defaultTemplatePath)) fail(`找不到默认模板：${defaultTemplatePath}`);
+if (!fs.existsSync(customTemplatePath)) fail(`找不到 Custom 片段：${customTemplatePath}`);
 
 try {
   const runDate = new Date();
@@ -370,8 +373,8 @@ try {
   } else {
     parseDirectory = parsedResult.artifactDirectory || latestDirectory();
   }
-  const localTemplate = fs.readFileSync(localTemplatePath, "utf8");
-  const output = composeTemplate({ remoteTemplate: template.content, localTemplate, proxyBlock, parsedProviders: proxyProviders, primaryUrl });
+  const customTemplate = fs.readFileSync(customTemplatePath, "utf8");
+  const output = composeTemplate({ remoteTemplate: template.content, customTemplate, proxyBlock, parsedProviders: proxyProviders, primaryUrl });
   if ((output.match(/^proxies:\s*$/gm) || []).length !== 1) fail("生成配置中的 proxies: 块数量校验失败。");
 
   const outputPath = path.join(parseDirectory, "openclash.yaml");
