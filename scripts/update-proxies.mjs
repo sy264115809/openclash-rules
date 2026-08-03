@@ -150,9 +150,15 @@ async function chooseTemplate() {
       { value: "local", label: "default.yaml（本地）", description: "使用 template/default.yaml" }
     ], "pro");
   }
-  if (selection === "local") return { name: "本地", content: fs.readFileSync(defaultTemplatePath, "utf8") };
+  if (selection === "local") {
+    return { name: "本地", fileLabel: "Default", content: fs.readFileSync(defaultTemplatePath, "utf8") };
+  }
   const descriptor = remoteTemplates[selection];
-  return { name: `${descriptor.label}（远程）`, content: await download(descriptor.url, `${descriptor.label} 模板`) };
+  return {
+    name: `${descriptor.label}（远程）`,
+    fileLabel: descriptor.label,
+    content: await download(descriptor.url, `${descriptor.label} 模板`)
+  };
 }
 
 function extractProxyBlock(subscription) {
@@ -367,6 +373,7 @@ try {
   let parsedResult = null;
   let parseDirectory = null;
   let interactiveProviderUrl = null;
+  let useSavedPrimary = Boolean(responseFile);
   if (responseFile) {
     const inputPath = path.resolve(responseFile);
     if (!fs.existsSync(inputPath)) fail(`找不到原始响应文件：${inputPath}`);
@@ -382,18 +389,32 @@ try {
       if (!url) fail("订阅地址不能为空；如需复用已有结果，请在菜单中选择 latest。");
       if (!/^https?:\/\//i.test(url)) fail("订阅地址必须以 http:// 或 https:// 开头。");
       subscriptionContent = await download(url);
-
-      const providerInput = await promptHidden("请输入要注入 Primary 的订阅地址（留空则依次读取 subscription/sub-inject.txt、subscription/inject.txt，输入不会回显）：\n> ");
-      if (providerInput) {
-        interactiveProviderUrl = validateSubscriptionUrl(providerInput);
-        if (!interactiveProviderUrl) fail("Primary 订阅地址必须是有效的 http:// 或 https:// URL。");
-      }
     } else {
       parsedResult = loadLatestParsedResult();
     }
+
+    const savedSubscription = findInjectedSubscriptionUrl(root);
+    const primaryOptions = [
+      { value: "none", label: "不注入 Primary", description: "最终配置不包含 Primary 代理提供者" },
+      { value: "manual", label: "手工输入 Primary 地址", description: "地址仅写入本次生成的 dist 配置" }
+    ];
+    if (savedSubscription) {
+      primaryOptions.splice(1, 0, {
+        value: "saved",
+        label: "注入已保存的 Primary 地址",
+        description: `使用 subscription/${savedSubscription.name}`
+      });
+    }
+    const primaryMode = await selectOption("选择 Primary 代理提供者", primaryOptions, savedSubscription ? "saved" : "none");
+    if (primaryMode === "manual") {
+      const providerInput = await promptHidden("请输入要注入 Primary 的订阅地址（输入不会回显）：\n> ");
+      interactiveProviderUrl = validateSubscriptionUrl(providerInput);
+      if (!interactiveProviderUrl) fail("Primary 订阅地址必须是有效的 http:// 或 https:// URL。");
+    }
+    useSavedPrimary = primaryMode === "saved";
   }
 
-  const injectedSubscription = interactiveProviderUrl ? null : findInjectedSubscriptionUrl(root);
+  const injectedSubscription = useSavedPrimary && !interactiveProviderUrl ? findInjectedSubscriptionUrl(root) : null;
   const primaryUrl = interactiveProviderUrl || injectedSubscription?.url || null;
 
   fs.mkdirSync(distDir, { recursive: true });
@@ -422,8 +443,9 @@ try {
   const output = composeTemplate({ remoteTemplate: template.content, customTemplate, proxyBlock, parsedProviders: proxyProviders, primaryUrl });
   if ((output.match(/^proxies:\s*$/gm) || []).length !== 1) fail("生成配置中的 proxies: 块数量校验失败。");
 
-  const outputPath = path.join(parseDirectory, "openclash.yaml");
-  const temporaryPath = path.join(parseDirectory, `.openclash.yaml.${process.pid}.tmp`);
+  const outputName = `openclash-${template.fileLabel}-${dateStamp(runDate)}.yaml`;
+  const outputPath = path.join(parseDirectory, outputName);
+  const temporaryPath = path.join(parseDirectory, `.${outputName}.${process.pid}.tmp`);
   fs.writeFileSync(temporaryPath, output, { encoding: "utf8", mode: 0o600 });
   fs.renameSync(temporaryPath, outputPath);
   console.log(`已生成：${outputPath}（${nodeCount} 个节点）`);
