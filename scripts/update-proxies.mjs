@@ -127,7 +127,7 @@ function extractProxyBlock(subscription) {
 
   for (const candidate of candidates) {
     const result = extractTopLevelProxies(candidate.content);
-    if (result) return { ...result, parsedYaml: candidate.content, proxyProviders: topLevelSection(candidate.content, "proxy-providers"), source: candidate.source };
+    if (result) return { ...result, proxyProviders: topLevelSection(result.parsedYaml, "proxy-providers"), source: candidate.source };
   }
 
   for (const candidate of candidates) {
@@ -150,10 +150,52 @@ function extractTopLevelProxies(subscription) {
   const start = lines.findIndex((line) => /^proxies:\s*$/.test(line.trimEnd()));
   if (start < 0) return null;
   const finish = lines.findIndex((line, index) => index > start && /^\S/.test(line));
-  const block = lines.slice(start, finish < 0 ? lines.length : finish).join("").trimEnd();
-  const nodeCount = block.split("\n").filter((line) => /^\s+-\s+(?:\{|name:)/.test(line)).length;
+  const end = finish < 0 ? lines.length : finish;
+  const { entries, filteredCount } = filterMetadataNodes(lines.slice(start + 1, end));
+  const block = [lines[start], ...entries].join("").trimEnd();
+  const nodeCount = entries.filter((line) => /^\s+-\s+(?:\{|name:)/.test(line)).length;
   if (nodeCount === 0) return null;
-  return { block: `${block}\n`, nodeCount };
+  const filteredBlock = `${block}\n`;
+  return {
+    block: filteredBlock,
+    nodeCount,
+    filteredCount,
+    // 同时净化保存的解析结果，避免 latest 再次带回这类信息节点。
+    parsedYaml: [...lines.slice(0, start), filteredBlock, ...lines.slice(end)].join("")
+  };
+}
+
+function isSubscriptionMetadataName(name) {
+  const normalized = name.trim();
+  return /^\d+(?:\.\d+)?\s*(?:[KMGTPE]?B)\s*\|\s*\d+(?:\.\d+)?\s*(?:[KMGTPE]?B)$/i.test(normalized)
+    || /^Traffic Reset:\s*.+\s+Left$/i.test(normalized)
+    || /^Expire Date:\s*\d{4}-\d{2}-\d{2}$/i.test(normalized);
+}
+
+function nodeName(entry) {
+  const matched = entry.match(/\bname\s*:\s*(?:"([^"]*)"|'([^']*)'|([^,\n}#]+))/i);
+  return matched ? (matched[1] ?? matched[2] ?? matched[3]).trim() : null;
+}
+
+function filterMetadataNodes(lines) {
+  const entries = [];
+  let current = [];
+  const flush = () => {
+    if (current.length === 0) return;
+    const entry = current.join("");
+    if (!isSubscriptionMetadataName(nodeName(entry) || "")) entries.push(...current);
+    current = [];
+  };
+
+  for (const line of lines) {
+    if (/^\s+-\s+(?:\{|name:)/.test(line)) flush();
+    current.push(line);
+  }
+  flush();
+
+  const originalNodeCount = lines.filter((line) => /^\s+-\s+(?:\{|name:)/.test(line)).length;
+  const keptNodeCount = entries.filter((line) => /^\s+-\s+(?:\{|name:)/.test(line)).length;
+  return { entries, filteredCount: originalNodeCount - keptNodeCount };
 }
 
 function decodeUriPart(value) {
@@ -206,7 +248,12 @@ function convertAnyTlsUris(subscription) {
       if (isTrue(uri.searchParams.get("insecure"))) node["skip-cert-verify"] = true;
       return node;
     });
-    return { block: renderNodes(nodes), nodeCount: nodes.length };
+    const keptNodes = nodes.filter((node) => !isSubscriptionMetadataName(node.name));
+    return {
+      block: renderNodes(keptNodes),
+      nodeCount: keptNodes.length,
+      filteredCount: nodes.length - keptNodes.length
+    };
   } catch (error) {
     fail(`AnyTLS URI 转换失败：${error.message}`);
   }
@@ -310,7 +357,7 @@ try {
   }
 
   if (!parsedResult) parsedResult = extractProxyBlock(subscriptionContent);
-  const { block: proxyBlock, nodeCount, parsedYaml, proxyProviders, source } = parsedResult;
+  const { block: proxyBlock, nodeCount, parsedYaml, proxyProviders, source, filteredCount = 0 } = parsedResult;
   if (subscriptionContent) {
     const parsedPath = path.join(parseDirectory, "parsed.yaml");
     const proxiesPath = path.join(parseDirectory, "proxies.yaml");
@@ -334,6 +381,7 @@ try {
   console.log(`已生成：${outputPath}（${nodeCount} 个节点）`);
   console.log(`基础模板：${template.name}`);
   console.log(`节点来源：${source}`);
+  if (filteredCount > 0) console.log(`已过滤 ${filteredCount} 个订阅信息节点（流量、重置时间、到期时间）。`);
   if (interactiveProviderUrl) console.log("已注入交互输入的 Primary 订阅。");
   else if (injectedSubscription) console.log(`已注入 Primary 订阅：subscription/${injectedSubscription.name}`);
   console.log("订阅地址未写入仓库；原始响应仅保存在已忽略的 dist 目录。");
