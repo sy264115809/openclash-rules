@@ -15,6 +15,14 @@
 
 请勿在本仓库提交订阅链接、节点地址、密码或其他凭据。
 
+## 使用前提
+
+以下命令均假设终端当前就在本 README 所在的仓库根目录，即能看到 `package.json`、`template/` 和 `scripts/`。例如：
+
+```bash
+cd ~/workspace/openclash-rules
+```
+
 ## 更新临时订阅节点
 
 脚本默认提供 [666OS/YYDS 中文模板](https://github.com/666OS/YYDS/tree/main/mihomo/config/cn) 的远程选择：Pro、Lite、Mini；也可选择本地 `template/default.yaml`。运行时会交互式选择模板、读取一次性订阅地址，并在不纳入 Git 的 `dist/subcription-YYYYMMDD/` 目录生成完整配置：
@@ -48,8 +56,10 @@ npm run update-proxies -- --template local
 npm run update-proxies -- --response-file dist/subcription-YYYYMMDD/raw.txt
 ```
 
-如需以当前完整配置重新生成模板，可运行：
+如需将同目录下的完整配置 `my-openclash.yaml` 重新制作为默认模板，可运行：
 
 ```bash
-npm run create-template -- /路径/到/完整配置.yaml
+npm run create-template -- ./my-openclash.yaml
 ```
+
+默认输出为 `./template/default.yaml`；个人规则仍由 `./template/custom.yaml` 管理。
