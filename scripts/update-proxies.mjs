@@ -212,36 +212,43 @@ function convertAnyTlsUris(subscription) {
   }
 }
 
-function outputFileName(date = new Date()) {
-  const day = String(date.getDate()).padStart(2, "0");
+function dateStamp(date = new Date()) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
-  return `openclash-${date.getFullYear()}${day}${month}.yaml`;
-}
-
-function rawResponseFileName(date = new Date()) {
   const day = String(date.getDate()).padStart(2, "0");
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  return `subscription-${date.getFullYear()}${day}${month}.txt`;
-}
-
-function parsedYamlFileName(date = new Date()) {
-  const day = String(date.getDate()).padStart(2, "0");
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  return `subscription-parsed-${date.getFullYear()}${day}${month}.yaml`;
-}
-
-function proxiesFileName(date = new Date()) {
-  const day = String(date.getDate()).padStart(2, "0");
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  return `proxies-${date.getFullYear()}${day}${month}.yaml`;
+  return `${date.getFullYear()}${month}${day}`;
 }
 
 function writeSensitiveFile(filePath, content) {
   fs.writeFileSync(filePath, content, { encoding: "utf8", mode: 0o600 });
 }
 
+function latestDirectory() {
+  return path.join(distDir, "latest");
+}
+
+function createParseDirectory(date) {
+  const directory = path.join(distDir, `subcription-${dateStamp(date)}`);
+  fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
+  return directory;
+}
+
+function updateLatestLink(parseDirectory) {
+  const latestPath = latestDirectory();
+  try {
+    if (fs.lstatSync(latestPath).isDirectory() && !fs.lstatSync(latestPath).isSymbolicLink()) {
+      fail(`无法更新 latest：${latestPath} 是普通目录，请先手动处理。`);
+    }
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  const temporaryLink = path.join(distDir, `.latest-${process.pid}`);
+  try { fs.unlinkSync(temporaryLink); } catch (error) { if (error.code !== "ENOENT") throw error; }
+  fs.symlinkSync(path.basename(parseDirectory), temporaryLink, "dir");
+  fs.renameSync(temporaryLink, latestPath);
+}
+
 function loadLatestParsedResult() {
-  const latestPath = path.join(distDir, "subscription-parsed-latest.yaml");
+  const latestPath = path.join(latestDirectory(), "parsed.yaml");
   if (!fs.existsSync(latestPath)) fail("未找到最新解析结果；请先输入一次有效订阅地址。");
   const parsedYaml = fs.readFileSync(latestPath, "utf8");
   const extracted = extractTopLevelProxies(parsedYaml);
@@ -250,7 +257,8 @@ function loadLatestParsedResult() {
     ...extracted,
     parsedYaml,
     proxyProviders: topLevelSection(parsedYaml, "proxy-providers"),
-    source: "最新解析结果"
+    source: "latest 解析结果",
+    artifactDirectory: latestDirectory()
   };
 }
 
@@ -267,7 +275,7 @@ try {
 
   let subscriptionContent = null;
   let parsedResult = null;
-  let requestedNewSubscription = false;
+  let parseDirectory = null;
   let interactiveProviderUrl = null;
   if (responseFile) {
     const inputPath = path.resolve(responseFile);
@@ -279,7 +287,6 @@ try {
     if (url) {
       if (!/^https?:\/\//i.test(url)) fail("订阅地址必须以 http:// 或 https:// 开头。");
       subscriptionContent = await download(url);
-      requestedNewSubscription = true;
 
       const providerInput = await promptHidden("请输入要注入 Primary 的订阅地址（留空则依次读取 subscription/sub-inject.txt、subscription/inject.txt，输入不会回显）：\n> ");
       if (providerInput) {
@@ -296,29 +303,32 @@ try {
 
   fs.mkdirSync(distDir, { recursive: true });
   if (subscriptionContent) {
-    const rawResponsePath = path.join(distDir, rawResponseFileName(runDate));
+    parseDirectory = createParseDirectory(runDate);
+    const rawResponsePath = path.join(parseDirectory, "raw.txt");
     writeSensitiveFile(rawResponsePath, subscriptionContent);
     console.log(`原始订阅响应已保存：${rawResponsePath}`);
   }
 
   if (!parsedResult) parsedResult = extractProxyBlock(subscriptionContent);
   const { block: proxyBlock, nodeCount, parsedYaml, proxyProviders, source } = parsedResult;
-  if (subscriptionContent || requestedNewSubscription) {
-    const parsedPath = path.join(distDir, parsedYamlFileName(runDate));
-    const proxiesPath = path.join(distDir, proxiesFileName(runDate));
+  if (subscriptionContent) {
+    const parsedPath = path.join(parseDirectory, "parsed.yaml");
+    const proxiesPath = path.join(parseDirectory, "proxies.yaml");
     writeSensitiveFile(parsedPath, parsedYaml);
     writeSensitiveFile(proxiesPath, proxyBlock);
-    writeSensitiveFile(path.join(distDir, "subscription-parsed-latest.yaml"), parsedYaml);
-    writeSensitiveFile(path.join(distDir, "proxies-latest.yaml"), proxyBlock);
+    updateLatestLink(parseDirectory);
     console.log(`解析后的 YAML 已保存：${parsedPath}`);
     console.log(`拆分的 proxies 已保存：${proxiesPath}`);
+    console.log(`latest 已指向：${parseDirectory}`);
+  } else {
+    parseDirectory = parsedResult.artifactDirectory || latestDirectory();
   }
   const localTemplate = fs.readFileSync(localTemplatePath, "utf8");
   const output = composeTemplate({ remoteTemplate: template.content, localTemplate, proxyBlock, parsedProviders: proxyProviders, primaryUrl });
   if ((output.match(/^proxies:\s*$/gm) || []).length !== 1) fail("生成配置中的 proxies: 块数量校验失败。");
 
-  const outputPath = path.join(distDir, outputFileName(runDate));
-  const temporaryPath = path.join(distDir, `.${path.basename(outputPath)}.${process.pid}.tmp`);
+  const outputPath = path.join(parseDirectory, "openclash.yaml");
+  const temporaryPath = path.join(parseDirectory, `.openclash.yaml.${process.pid}.tmp`);
   fs.writeFileSync(temporaryPath, output, { encoding: "utf8", mode: 0o600 });
   fs.renameSync(temporaryPath, outputPath);
   console.log(`已生成：${outputPath}（${nodeCount} 个节点）`);
