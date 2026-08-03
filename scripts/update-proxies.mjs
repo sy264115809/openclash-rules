@@ -2,17 +2,22 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import readline from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import {
   findInjectedSubscriptionUrl,
-  replaceProxyProviders,
   validateSubscriptionUrl
 } from "./subscription-providers.mjs";
+import { composeTemplate, topLevelSection } from "./template-composer.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const templatePath = path.join(root, "openclash-tmp.yaml");
+const localTemplatePath = path.join(root, "openclash-tmp.yaml");
 const distDir = path.join(root, "dist");
-const marker = "# __PROXIES_PLACEHOLDER__";
+const remoteTemplates = {
+  pro: { label: "Pro", url: "https://raw.githubusercontent.com/666OS/YYDS/main/mihomo/config/cn/Pro_cn.yaml" },
+  lite: { label: "Lite", url: "https://raw.githubusercontent.com/666OS/YYDS/main/mihomo/config/cn/Lite_cn.yaml" },
+  mini: { label: "Mini", url: "https://raw.githubusercontent.com/666OS/YYDS/main/mihomo/config/cn/Mini_cn.yaml" }
+};
 
 function fail(message) {
   console.error(`错误：${message}`);
@@ -57,7 +62,17 @@ async function promptHidden(message) {
   });
 }
 
-async function download(url) {
+async function promptText(message) {
+  if (!process.stdin.isTTY) fail("请通过 --template 指定模板，或在交互式终端中运行脚本。");
+  const terminal = readline.createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    return (await terminal.question(message)).trim();
+  } finally {
+    terminal.close();
+  }
+}
+
+async function download(url, label = "订阅") {
   let lastError;
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
@@ -79,7 +94,23 @@ async function download(url) {
       if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, 1000));
     }
   }
-  throw new Error(`订阅下载失败：${lastError.message}`);
+  throw new Error(`${label}下载失败：${lastError.message}`);
+}
+
+async function chooseTemplate() {
+  const argumentIndex = process.argv.indexOf("--template");
+  let selection = argumentIndex >= 0 ? process.argv[argumentIndex + 1]?.toLowerCase() : null;
+  if (argumentIndex >= 0 && !["local", ...Object.keys(remoteTemplates)].includes(selection)) {
+    fail("--template 仅支持 local、pro、lite、mini。");
+  }
+  if (!selection) {
+    const answer = await promptText("选择模板：1) Pro（远程）  2) Lite（远程）  3) Mini（远程）  4) 本地模板 [默认 1]： ");
+    selection = ({ "": "pro", "1": "pro", "2": "lite", "3": "mini", "4": "local", pro: "pro", lite: "lite", mini: "mini", local: "local" })[answer.toLowerCase()];
+    if (!selection) fail("无效的模板选择。");
+  }
+  if (selection === "local") return { name: "本地", content: fs.readFileSync(localTemplatePath, "utf8") };
+  const descriptor = remoteTemplates[selection];
+  return { name: `${descriptor.label}（远程）`, content: await download(descriptor.url, `${descriptor.label} 模板`) };
 }
 
 function extractProxyBlock(subscription) {
@@ -96,12 +127,12 @@ function extractProxyBlock(subscription) {
 
   for (const candidate of candidates) {
     const result = extractTopLevelProxies(candidate.content);
-    if (result) return { ...result, source: candidate.source };
+    if (result) return { ...result, proxyProviders: topLevelSection(candidate.content, "proxy-providers"), source: candidate.source };
   }
 
   for (const candidate of candidates) {
     const result = convertAnyTlsUris(candidate.content);
-    if (result) return { ...result, source: `${candidate.source}（AnyTLS URI 转换）` };
+    if (result) return { ...result, proxyProviders: null, source: `${candidate.source}（AnyTLS URI 转换）` };
   }
 
   const inspected = candidates.at(-1).content.trimStart();
@@ -193,10 +224,11 @@ function rawResponseFileName(date = new Date()) {
   return `subscription-${date.getFullYear()}${day}${month}.txt`;
 }
 
-if (!fs.existsSync(templatePath)) fail(`找不到模板：${templatePath}`);
+if (!fs.existsSync(localTemplatePath)) fail(`找不到本地 Custom 模板：${localTemplatePath}`);
 
 try {
   const runDate = new Date();
+  const template = await chooseTemplate();
   const responseFileIndex = process.argv.indexOf("--response-file");
   const responseFile = responseFileIndex >= 0 ? process.argv[responseFileIndex + 1] : null;
   if (responseFileIndex >= 0 && (!responseFile || responseFile.startsWith("--"))) {
@@ -230,12 +262,9 @@ try {
   fs.writeFileSync(rawResponsePath, subscriptionContent, { encoding: "utf8", mode: 0o600 });
   console.log(`原始订阅响应已保存：${rawResponsePath}`);
 
-  const { block: proxyBlock, nodeCount, source } = extractProxyBlock(subscriptionContent);
-
-  let template = fs.readFileSync(templatePath, "utf8");
-  if (!template.includes(marker)) fail("模板中未找到节点占位符。");
-  template = replaceProxyProviders(template, { primaryUrl });
-  const output = template.replace(marker, proxyBlock);
+  const { block: proxyBlock, nodeCount, proxyProviders, source } = extractProxyBlock(subscriptionContent);
+  const localTemplate = fs.readFileSync(localTemplatePath, "utf8");
+  const output = composeTemplate({ remoteTemplate: template.content, localTemplate, proxyBlock, parsedProviders: proxyProviders, primaryUrl });
   if ((output.match(/^proxies:\s*$/gm) || []).length !== 1) fail("生成配置中的 proxies: 块数量校验失败。");
 
   const outputPath = path.join(distDir, outputFileName(runDate));
@@ -243,6 +272,7 @@ try {
   fs.writeFileSync(temporaryPath, output, { encoding: "utf8", mode: 0o600 });
   fs.renameSync(temporaryPath, outputPath);
   console.log(`已生成：${outputPath}（${nodeCount} 个节点）`);
+  console.log(`基础模板：${template.name}`);
   console.log(`节点来源：${source}`);
   if (interactiveProviderUrl) console.log("已注入交互输入的 Primary 订阅。");
   else if (injectedSubscription) console.log(`已注入 Primary 订阅：subscription/${injectedSubscription.name}`);
