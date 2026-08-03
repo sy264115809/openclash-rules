@@ -127,12 +127,12 @@ function extractProxyBlock(subscription) {
 
   for (const candidate of candidates) {
     const result = extractTopLevelProxies(candidate.content);
-    if (result) return { ...result, proxyProviders: topLevelSection(candidate.content, "proxy-providers"), source: candidate.source };
+    if (result) return { ...result, parsedYaml: candidate.content, proxyProviders: topLevelSection(candidate.content, "proxy-providers"), source: candidate.source };
   }
 
   for (const candidate of candidates) {
     const result = convertAnyTlsUris(candidate.content);
-    if (result) return { ...result, proxyProviders: null, source: `${candidate.source}（AnyTLS URI 转换）` };
+    if (result) return { ...result, parsedYaml: result.block, proxyProviders: null, source: `${candidate.source}（AnyTLS URI 转换）` };
   }
 
   const inspected = candidates.at(-1).content.trimStart();
@@ -224,6 +224,36 @@ function rawResponseFileName(date = new Date()) {
   return `subscription-${date.getFullYear()}${day}${month}.txt`;
 }
 
+function parsedYamlFileName(date = new Date()) {
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  return `subscription-parsed-${date.getFullYear()}${day}${month}.yaml`;
+}
+
+function proxiesFileName(date = new Date()) {
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  return `proxies-${date.getFullYear()}${day}${month}.yaml`;
+}
+
+function writeSensitiveFile(filePath, content) {
+  fs.writeFileSync(filePath, content, { encoding: "utf8", mode: 0o600 });
+}
+
+function loadLatestParsedResult() {
+  const latestPath = path.join(distDir, "subscription-parsed-latest.yaml");
+  if (!fs.existsSync(latestPath)) fail("未找到最新解析结果；请先输入一次有效订阅地址。");
+  const parsedYaml = fs.readFileSync(latestPath, "utf8");
+  const extracted = extractTopLevelProxies(parsedYaml);
+  if (!extracted) fail("最新解析结果不包含有效的 proxies: 块。");
+  return {
+    ...extracted,
+    parsedYaml,
+    proxyProviders: topLevelSection(parsedYaml, "proxy-providers"),
+    source: "最新解析结果"
+  };
+}
+
 if (!fs.existsSync(localTemplatePath)) fail(`找不到本地 Custom 模板：${localTemplatePath}`);
 
 try {
@@ -235,7 +265,9 @@ try {
     fail("--response-file 后必须提供本地响应文件路径。");
   }
 
-  let subscriptionContent;
+  let subscriptionContent = null;
+  let parsedResult = null;
+  let requestedNewSubscription = false;
   let interactiveProviderUrl = null;
   if (responseFile) {
     const inputPath = path.resolve(responseFile);
@@ -243,14 +275,19 @@ try {
     subscriptionContent = fs.readFileSync(inputPath, "utf8");
     console.log(`正在使用已保存的原始响应：${inputPath}`);
   } else {
-    const url = await promptHidden("请输入有效的 Clash/Mihomo 订阅地址（输入不会回显）：\n> ");
-    if (!/^https?:\/\//i.test(url)) fail("订阅地址必须以 http:// 或 https:// 开头。");
-    subscriptionContent = await download(url);
+    const url = await promptHidden("请输入有效的 Clash/Mihomo 订阅地址（留空则使用最新解析结果，输入不会回显）：\n> ");
+    if (url) {
+      if (!/^https?:\/\//i.test(url)) fail("订阅地址必须以 http:// 或 https:// 开头。");
+      subscriptionContent = await download(url);
+      requestedNewSubscription = true;
 
-    const providerInput = await promptHidden("请输入要注入 Primary 的订阅地址（留空则依次读取 subscription/sub-inject.txt、subscription/inject.txt，输入不会回显）：\n> ");
-    if (providerInput) {
-      interactiveProviderUrl = validateSubscriptionUrl(providerInput);
-      if (!interactiveProviderUrl) fail("Primary 订阅地址必须是有效的 http:// 或 https:// URL。");
+      const providerInput = await promptHidden("请输入要注入 Primary 的订阅地址（留空则依次读取 subscription/sub-inject.txt、subscription/inject.txt，输入不会回显）：\n> ");
+      if (providerInput) {
+        interactiveProviderUrl = validateSubscriptionUrl(providerInput);
+        if (!interactiveProviderUrl) fail("Primary 订阅地址必须是有效的 http:// 或 https:// URL。");
+      }
+    } else {
+      parsedResult = loadLatestParsedResult();
     }
   }
 
@@ -258,11 +295,24 @@ try {
   const primaryUrl = interactiveProviderUrl || injectedSubscription?.url || null;
 
   fs.mkdirSync(distDir, { recursive: true });
-  const rawResponsePath = path.join(distDir, rawResponseFileName(runDate));
-  fs.writeFileSync(rawResponsePath, subscriptionContent, { encoding: "utf8", mode: 0o600 });
-  console.log(`原始订阅响应已保存：${rawResponsePath}`);
+  if (subscriptionContent) {
+    const rawResponsePath = path.join(distDir, rawResponseFileName(runDate));
+    writeSensitiveFile(rawResponsePath, subscriptionContent);
+    console.log(`原始订阅响应已保存：${rawResponsePath}`);
+  }
 
-  const { block: proxyBlock, nodeCount, proxyProviders, source } = extractProxyBlock(subscriptionContent);
+  if (!parsedResult) parsedResult = extractProxyBlock(subscriptionContent);
+  const { block: proxyBlock, nodeCount, parsedYaml, proxyProviders, source } = parsedResult;
+  if (subscriptionContent || requestedNewSubscription) {
+    const parsedPath = path.join(distDir, parsedYamlFileName(runDate));
+    const proxiesPath = path.join(distDir, proxiesFileName(runDate));
+    writeSensitiveFile(parsedPath, parsedYaml);
+    writeSensitiveFile(proxiesPath, proxyBlock);
+    writeSensitiveFile(path.join(distDir, "subscription-parsed-latest.yaml"), parsedYaml);
+    writeSensitiveFile(path.join(distDir, "proxies-latest.yaml"), proxyBlock);
+    console.log(`解析后的 YAML 已保存：${parsedPath}`);
+    console.log(`拆分的 proxies 已保存：${proxiesPath}`);
+  }
   const localTemplate = fs.readFileSync(localTemplatePath, "utf8");
   const output = composeTemplate({ remoteTemplate: template.content, localTemplate, proxyBlock, parsedProviders: proxyProviders, primaryUrl });
   if ((output.match(/^proxies:\s*$/gm) || []).length !== 1) fail("生成配置中的 proxies: 块数量校验失败。");
