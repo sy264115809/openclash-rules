@@ -31,6 +31,8 @@ cd ~/workspace/openclash-rules
 npm run update-proxies
 ```
 
+交互界面支持 `↑` / `↓` 或 `j` / `k` 移动，按 Enter 确认。可选择远程 Pro、Lite、Mini 或本地默认模板；节点来源也可选择输入新订阅地址，或直接复用 `latest` 的解析结果。
+
 也可以跳过交互式模板选择：
 
 ```bash

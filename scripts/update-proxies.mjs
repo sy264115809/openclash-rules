@@ -2,7 +2,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import readline from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import {
   findInjectedSubscriptionUrl,
@@ -64,14 +63,52 @@ async function promptHidden(message) {
   });
 }
 
-async function promptText(message) {
-  if (!process.stdin.isTTY) fail("请通过 --template 指定模板，或在交互式终端中运行脚本。");
-  const terminal = readline.createInterface({ input: process.stdin, output: process.stdout });
-  try {
-    return (await terminal.question(message)).trim();
-  } finally {
-    terminal.close();
-  }
+async function selectOption(title, options, defaultValue) {
+  if (!process.stdin.isTTY) fail("请通过命令行参数指定选项，或在交互式终端中运行此脚本。");
+  let selected = Math.max(0, options.findIndex((option) => option.value === defaultValue));
+  const render = (moveUp = false) => {
+    if (moveUp) process.stdout.write(`\u001B[${options.length}A`);
+    for (let index = 0; index < options.length; index += 1) {
+      const option = options[index];
+      const marker = index === selected ? "❯" : " ";
+      const text = `${marker} ${option.label}${option.description ? ` — ${option.description}` : ""}`;
+      process.stdout.write(`\r\u001B[2K${index === selected ? "\u001B[36m" : ""}${text}\u001B[0m\n`);
+    }
+  };
+
+  process.stdout.write(`\n\u001B[1m${title}\u001B[0m（↑↓ 选择，Enter 确认）\n`);
+  process.stdout.write("\u001B[?25l");
+  process.stdin.setRawMode(true);
+  process.stdin.resume();
+  process.stdin.setEncoding("utf8");
+  render();
+
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      process.stdin.off("data", onData);
+      process.stdin.setRawMode(false);
+      process.stdin.pause();
+      process.stdout.write("\u001B[?25h");
+    };
+    const onData = (chunk) => {
+      if (chunk === "\u0003") {
+        cleanup();
+        reject(new Error("已取消。"));
+      } else if (chunk === "\r" || chunk === "\n") {
+        const choice = options[selected];
+        cleanup();
+        process.stdout.write(`已选择：${choice.label}\n`);
+        resolve(choice.value);
+      } else if (chunk === "\u001B[A" || chunk === "k") {
+        selected = (selected - 1 + options.length) % options.length;
+        render(true);
+      } else if (chunk === "\u001B[B" || chunk === "j") {
+        selected = (selected + 1) % options.length;
+        render(true);
+      }
+    };
+    process.stdin.on("data", onData);
+  });
 }
 
 async function download(url, label = "订阅") {
@@ -106,9 +143,12 @@ async function chooseTemplate() {
     fail("--template 仅支持 local、pro、lite、mini。");
   }
   if (!selection) {
-    const answer = await promptText("选择模板：1) Pro（远程）  2) Lite（远程）  3) Mini（远程）  4) 本地模板 [默认 1]： ");
-    selection = ({ "": "pro", "1": "pro", "2": "lite", "3": "mini", "4": "local", pro: "pro", lite: "lite", mini: "mini", local: "local" })[answer.toLowerCase()];
-    if (!selection) fail("无效的模板选择。");
+    selection = await selectOption("选择基础模板", [
+      { value: "pro", label: "Pro（远程）", description: "完整策略组与规则集" },
+      { value: "lite", label: "Lite（远程）", description: "精简策略组" },
+      { value: "mini", label: "Mini（远程）", description: "最小化配置" },
+      { value: "local", label: "default.yaml（本地）", description: "使用 template/default.yaml" }
+    ], "pro");
   }
   if (selection === "local") return { name: "本地", content: fs.readFileSync(defaultTemplatePath, "utf8") };
   const descriptor = remoteTemplates[selection];
@@ -333,8 +373,13 @@ try {
     subscriptionContent = fs.readFileSync(inputPath, "utf8");
     console.log(`正在使用已保存的原始响应：${inputPath}`);
   } else {
-    const url = await promptHidden("请输入有效的 Clash/Mihomo 订阅地址（留空则使用最新解析结果，输入不会回显）：\n> ");
-    if (url) {
+    const subscriptionMode = await selectOption("选择节点来源", [
+      { value: "url", label: "输入新的订阅地址", description: "下载并解析一次性订阅" },
+      { value: "latest", label: "使用 latest 解析结果", description: "不访问订阅地址，直接复用最近一次结果" }
+    ], "url");
+    if (subscriptionMode === "url") {
+      const url = await promptHidden("请输入有效的 Clash/Mihomo 订阅地址（输入不会回显）：\n> ");
+      if (!url) fail("订阅地址不能为空；如需复用已有结果，请在菜单中选择 latest。");
       if (!/^https?:\/\//i.test(url)) fail("订阅地址必须以 http:// 或 https:// 开头。");
       subscriptionContent = await download(url);
 
