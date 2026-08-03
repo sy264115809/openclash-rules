@@ -46,7 +46,7 @@ npm run update-proxies -- --template local
 
 主订阅输入完成后，脚本还会询问要注入 `proxy-providers.Primary` 的订阅 URL。交互输入优先级最高；直接回车时依次读取 `subscription/sub-inject.txt`、`subscription/inject.txt`。模板本身只保留空注入标记，实际 URL 仅写入已被 Git 忽略的 `dist` 配置。详细规则见 [`subscription/README.md`](subscription/README.md)。
 
-每次解析的目录中包含：`raw.txt`（原始响应）、`parsed.yaml`（解析后的 YAML）、`proxies.yaml`（拆分节点）和最终完整配置，例如 `openclash-Pro-YYYYMMDD.yaml`、`openclash-Lite-YYYYMMDD.yaml`、`openclash-Mini-YYYYMMDD.yaml` 或 `openclash-Default-YYYYMMDD.yaml`。成功后 `dist/latest` 会以符号链接指向最近一次解析目录。
+每次解析的目录中包含：`raw.txt`（原始响应）、`parsed.yaml`（完整解析后的 YAML）、`proxies.yaml`（从中抽取并过滤信息节点后的 `proxies:` 块）和最终完整配置，例如 `openclash-Pro-YYYYMMDD.yaml`、`openclash-Lite-YYYYMMDD.yaml`、`openclash-Mini-YYYYMMDD.yaml` 或 `openclash-Default-YYYYMMDD.yaml`。成功后 `dist/latest` 会以符号链接指向最近一次解析目录。
 
 交互生成时还会询问 Primary 代理提供者：可选择不注入、使用 `subscription/sub-inject.txt`（或 `subscription/inject.txt`）中已保存的地址，或手工输入一次性 Primary 地址。
 

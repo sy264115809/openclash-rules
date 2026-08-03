@@ -175,12 +175,20 @@ function extractProxyBlock(subscription) {
 
   for (const candidate of candidates) {
     const result = extractTopLevelProxies(candidate.content);
-    if (result) return { ...result, proxyProviders: topLevelSection(result.parsedYaml, "proxy-providers"), source: candidate.source };
+    if (result) {
+      return {
+        ...result,
+        // parsed.yaml 用于保存完整解析结果；过滤仅作用于抽取出的 proxies。
+        parsedYaml: candidate.content,
+        proxyProviders: topLevelSection(candidate.content, "proxy-providers"),
+        source: candidate.source
+      };
+    }
   }
 
   for (const candidate of candidates) {
     const result = convertAnyTlsUris(candidate.content);
-    if (result) return { ...result, parsedYaml: result.block, proxyProviders: null, source: `${candidate.source}（AnyTLS URI 转换）` };
+    if (result) return { ...result, proxyProviders: null, source: `${candidate.source}（AnyTLS URI 转换）` };
   }
 
   const inspected = candidates.at(-1).content.trimStart();
@@ -296,11 +304,13 @@ function convertAnyTlsUris(subscription) {
       if (isTrue(uri.searchParams.get("insecure"))) node["skip-cert-verify"] = true;
       return node;
     });
+    const parsedYaml = renderNodes(nodes);
     const keptNodes = nodes.filter((node) => !isSubscriptionMetadataName(node.name));
     return {
       block: renderNodes(keptNodes),
       nodeCount: keptNodes.length,
-      filteredCount: nodes.length - keptNodes.length
+      filteredCount: nodes.length - keptNodes.length,
+      parsedYaml
     };
   } catch (error) {
     fail(`AnyTLS URI 转换失败：${error.message}`);
