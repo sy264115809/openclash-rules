@@ -2,4 +2,3 @@
 payload:
   - DOMAIN,local.adguard.org
   - DOMAIN-SUFFIX,ant.design
-  - DOMAIN-SUFFIX,tailscale.com
