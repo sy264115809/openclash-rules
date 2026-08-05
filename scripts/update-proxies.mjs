@@ -5,14 +5,20 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import {
   findInjectedSubscriptionUrl,
-  replaceProxyProviders,
   validateSubscriptionUrl
 } from "./subscription-providers.mjs";
+import { composeTemplate, topLevelSection } from "./template-composer.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const templatePath = path.join(root, "openclash-tmp.yaml");
+const templateDir = path.join(root, "template");
+const defaultTemplatePath = path.join(templateDir, "default.yaml");
+const customTemplatePath = path.join(templateDir, "custom.yaml");
 const distDir = path.join(root, "dist");
-const marker = "# __PROXIES_PLACEHOLDER__";
+const remoteTemplates = {
+  pro: { label: "Pro", url: "https://raw.githubusercontent.com/666OS/YYDS/main/mihomo/config/cn/Pro_cn.yaml" },
+  lite: { label: "Lite", url: "https://raw.githubusercontent.com/666OS/YYDS/main/mihomo/config/cn/Lite_cn.yaml" },
+  mini: { label: "Mini", url: "https://raw.githubusercontent.com/666OS/YYDS/main/mihomo/config/cn/Mini_cn.yaml" }
+};
 
 function fail(message) {
   console.error(`错误：${message}`);
@@ -57,7 +63,55 @@ async function promptHidden(message) {
   });
 }
 
-async function download(url) {
+async function selectOption(title, options, defaultValue) {
+  if (!process.stdin.isTTY) fail("请通过命令行参数指定选项，或在交互式终端中运行此脚本。");
+  let selected = Math.max(0, options.findIndex((option) => option.value === defaultValue));
+  const render = (moveUp = false) => {
+    if (moveUp) process.stdout.write(`\u001B[${options.length}A`);
+    for (let index = 0; index < options.length; index += 1) {
+      const option = options[index];
+      const marker = index === selected ? "❯" : " ";
+      const text = `${marker} ${option.label}${option.description ? ` — ${option.description}` : ""}`;
+      process.stdout.write(`\r\u001B[2K${index === selected ? "\u001B[36m" : ""}${text}\u001B[0m\n`);
+    }
+  };
+
+  process.stdout.write(`\n\u001B[1m${title}\u001B[0m（↑↓ 选择，Enter 确认）\n`);
+  process.stdout.write("\u001B[?25l");
+  process.stdin.setRawMode(true);
+  process.stdin.resume();
+  process.stdin.setEncoding("utf8");
+  render();
+
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      process.stdin.off("data", onData);
+      process.stdin.setRawMode(false);
+      process.stdin.pause();
+      process.stdout.write("\u001B[?25h");
+    };
+    const onData = (chunk) => {
+      if (chunk === "\u0003") {
+        cleanup();
+        reject(new Error("已取消。"));
+      } else if (chunk === "\r" || chunk === "\n") {
+        const choice = options[selected];
+        cleanup();
+        process.stdout.write(`已选择：${choice.label}\n`);
+        resolve(choice.value);
+      } else if (chunk === "\u001B[A" || chunk === "k") {
+        selected = (selected - 1 + options.length) % options.length;
+        render(true);
+      } else if (chunk === "\u001B[B" || chunk === "j") {
+        selected = (selected + 1) % options.length;
+        render(true);
+      }
+    };
+    process.stdin.on("data", onData);
+  });
+}
+
+async function download(url, label = "订阅") {
   let lastError;
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
@@ -79,7 +133,32 @@ async function download(url) {
       if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, 1000));
     }
   }
-  throw new Error(`订阅下载失败：${lastError.message}`);
+  throw new Error(`${label}下载失败：${lastError.message}`);
+}
+
+async function chooseTemplate() {
+  const argumentIndex = process.argv.indexOf("--template");
+  let selection = argumentIndex >= 0 ? process.argv[argumentIndex + 1]?.toLowerCase() : null;
+  if (argumentIndex >= 0 && !["local", ...Object.keys(remoteTemplates)].includes(selection)) {
+    fail("--template 仅支持 local、pro、lite、mini。");
+  }
+  if (!selection) {
+    selection = await selectOption("选择基础模板", [
+      { value: "pro", label: "Pro（远程）", description: "完整策略组与规则集" },
+      { value: "lite", label: "Lite（远程）", description: "精简策略组" },
+      { value: "mini", label: "Mini（远程）", description: "最小化配置" },
+      { value: "local", label: "default.yaml（本地）", description: "使用 template/default.yaml" }
+    ], "pro");
+  }
+  if (selection === "local") {
+    return { name: "本地", fileLabel: "Default", content: fs.readFileSync(defaultTemplatePath, "utf8") };
+  }
+  const descriptor = remoteTemplates[selection];
+  return {
+    name: `${descriptor.label}（远程）`,
+    fileLabel: descriptor.label,
+    content: await download(descriptor.url, `${descriptor.label} 模板`)
+  };
 }
 
 function extractProxyBlock(subscription) {
@@ -96,12 +175,20 @@ function extractProxyBlock(subscription) {
 
   for (const candidate of candidates) {
     const result = extractTopLevelProxies(candidate.content);
-    if (result) return { ...result, source: candidate.source };
+    if (result) {
+      return {
+        ...result,
+        // parsed.yaml 用于保存完整解析结果；过滤仅作用于抽取出的 proxies。
+        parsedYaml: candidate.content,
+        proxyProviders: topLevelSection(candidate.content, "proxy-providers"),
+        source: candidate.source
+      };
+    }
   }
 
   for (const candidate of candidates) {
     const result = convertAnyTlsUris(candidate.content);
-    if (result) return { ...result, source: `${candidate.source}（AnyTLS URI 转换）` };
+    if (result) return { ...result, proxyProviders: null, source: `${candidate.source}（AnyTLS URI 转换）` };
   }
 
   const inspected = candidates.at(-1).content.trimStart();
@@ -119,10 +206,52 @@ function extractTopLevelProxies(subscription) {
   const start = lines.findIndex((line) => /^proxies:\s*$/.test(line.trimEnd()));
   if (start < 0) return null;
   const finish = lines.findIndex((line, index) => index > start && /^\S/.test(line));
-  const block = lines.slice(start, finish < 0 ? lines.length : finish).join("").trimEnd();
-  const nodeCount = block.split("\n").filter((line) => /^\s+-\s+(?:\{|name:)/.test(line)).length;
+  const end = finish < 0 ? lines.length : finish;
+  const { entries, filteredCount } = filterMetadataNodes(lines.slice(start + 1, end));
+  const block = [lines[start], ...entries].join("").trimEnd();
+  const nodeCount = entries.filter((line) => /^\s+-\s+(?:\{|name:)/.test(line)).length;
   if (nodeCount === 0) return null;
-  return { block: `${block}\n`, nodeCount };
+  const filteredBlock = `${block}\n`;
+  return {
+    block: filteredBlock,
+    nodeCount,
+    filteredCount,
+    // 同时净化保存的解析结果，避免 latest 再次带回这类信息节点。
+    parsedYaml: [...lines.slice(0, start), filteredBlock, ...lines.slice(end)].join("")
+  };
+}
+
+function isSubscriptionMetadataName(name) {
+  const normalized = name.trim();
+  return /^\d+(?:\.\d+)?\s*(?:[KMGTPE]?B)\s*\|\s*\d+(?:\.\d+)?\s*(?:[KMGTPE]?B)$/i.test(normalized)
+    || /^Traffic Reset:\s*.+\s+Left$/i.test(normalized)
+    || /^Expire Date:\s*\d{4}-\d{2}-\d{2}$/i.test(normalized);
+}
+
+function nodeName(entry) {
+  const matched = entry.match(/\bname\s*:\s*(?:"([^"]*)"|'([^']*)'|([^,\n}#]+))/i);
+  return matched ? (matched[1] ?? matched[2] ?? matched[3]).trim() : null;
+}
+
+function filterMetadataNodes(lines) {
+  const entries = [];
+  let current = [];
+  const flush = () => {
+    if (current.length === 0) return;
+    const entry = current.join("");
+    if (!isSubscriptionMetadataName(nodeName(entry) || "")) entries.push(...current);
+    current = [];
+  };
+
+  for (const line of lines) {
+    if (/^\s+-\s+(?:\{|name:)/.test(line)) flush();
+    current.push(line);
+  }
+  flush();
+
+  const originalNodeCount = lines.filter((line) => /^\s+-\s+(?:\{|name:)/.test(line)).length;
+  const keptNodeCount = entries.filter((line) => /^\s+-\s+(?:\{|name:)/.test(line)).length;
+  return { entries, filteredCount: originalNodeCount - keptNodeCount };
 }
 
 function decodeUriPart(value) {
@@ -175,75 +304,164 @@ function convertAnyTlsUris(subscription) {
       if (isTrue(uri.searchParams.get("insecure"))) node["skip-cert-verify"] = true;
       return node;
     });
-    return { block: renderNodes(nodes), nodeCount: nodes.length };
+    const parsedYaml = renderNodes(nodes);
+    const keptNodes = nodes.filter((node) => !isSubscriptionMetadataName(node.name));
+    return {
+      block: renderNodes(keptNodes),
+      nodeCount: keptNodes.length,
+      filteredCount: nodes.length - keptNodes.length,
+      parsedYaml
+    };
   } catch (error) {
     fail(`AnyTLS URI 转换失败：${error.message}`);
   }
 }
 
-function outputFileName(date = new Date()) {
-  const day = String(date.getDate()).padStart(2, "0");
+function dateStamp(date = new Date()) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
-  return `openclash-${date.getFullYear()}${day}${month}.yaml`;
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}${month}${day}`;
 }
 
-function rawResponseFileName(date = new Date()) {
-  const day = String(date.getDate()).padStart(2, "0");
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  return `subscription-${date.getFullYear()}${day}${month}.txt`;
+function writeSensitiveFile(filePath, content) {
+  fs.writeFileSync(filePath, content, { encoding: "utf8", mode: 0o600 });
 }
 
-if (!fs.existsSync(templatePath)) fail(`找不到模板：${templatePath}`);
+function latestDirectory() {
+  return path.join(distDir, "latest");
+}
+
+function createParseDirectory(date) {
+  const directory = path.join(distDir, `subcription-${dateStamp(date)}`);
+  fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
+  return directory;
+}
+
+function updateLatestLink(parseDirectory) {
+  const latestPath = latestDirectory();
+  try {
+    if (fs.lstatSync(latestPath).isDirectory() && !fs.lstatSync(latestPath).isSymbolicLink()) {
+      fail(`无法更新 latest：${latestPath} 是普通目录，请先手动处理。`);
+    }
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  const temporaryLink = path.join(distDir, `.latest-${process.pid}`);
+  try { fs.unlinkSync(temporaryLink); } catch (error) { if (error.code !== "ENOENT") throw error; }
+  fs.symlinkSync(path.basename(parseDirectory), temporaryLink, "dir");
+  fs.renameSync(temporaryLink, latestPath);
+}
+
+function loadLatestParsedResult() {
+  const latestPath = path.join(latestDirectory(), "parsed.yaml");
+  if (!fs.existsSync(latestPath)) fail("未找到最新解析结果；请先输入一次有效订阅地址。");
+  const parsedYaml = fs.readFileSync(latestPath, "utf8");
+  const extracted = extractTopLevelProxies(parsedYaml);
+  if (!extracted) fail("最新解析结果不包含有效的 proxies: 块。");
+  return {
+    ...extracted,
+    parsedYaml,
+    proxyProviders: topLevelSection(parsedYaml, "proxy-providers"),
+    source: "latest 解析结果",
+    artifactDirectory: latestDirectory()
+  };
+}
+
+if (!fs.existsSync(defaultTemplatePath)) fail(`找不到默认模板：${defaultTemplatePath}`);
+if (!fs.existsSync(customTemplatePath)) fail(`找不到 Custom 片段：${customTemplatePath}`);
 
 try {
   const runDate = new Date();
+  const template = await chooseTemplate();
   const responseFileIndex = process.argv.indexOf("--response-file");
   const responseFile = responseFileIndex >= 0 ? process.argv[responseFileIndex + 1] : null;
   if (responseFileIndex >= 0 && (!responseFile || responseFile.startsWith("--"))) {
     fail("--response-file 后必须提供本地响应文件路径。");
   }
 
-  let subscriptionContent;
+  let subscriptionContent = null;
+  let parsedResult = null;
+  let parseDirectory = null;
   let interactiveProviderUrl = null;
+  let useSavedPrimary = Boolean(responseFile);
   if (responseFile) {
     const inputPath = path.resolve(responseFile);
     if (!fs.existsSync(inputPath)) fail(`找不到原始响应文件：${inputPath}`);
     subscriptionContent = fs.readFileSync(inputPath, "utf8");
     console.log(`正在使用已保存的原始响应：${inputPath}`);
   } else {
-    const url = await promptHidden("请输入有效的 Clash/Mihomo 订阅地址（输入不会回显）：\n> ");
-    if (!/^https?:\/\//i.test(url)) fail("订阅地址必须以 http:// 或 https:// 开头。");
-    subscriptionContent = await download(url);
+    const subscriptionMode = await selectOption("选择节点来源", [
+      { value: "url", label: "输入新的订阅地址", description: "下载并解析一次性订阅" },
+      { value: "latest", label: "使用 latest 解析结果", description: "不访问订阅地址，直接复用最近一次结果" }
+    ], "url");
+    if (subscriptionMode === "url") {
+      const url = await promptHidden("请输入有效的 Clash/Mihomo 订阅地址（输入不会回显）：\n> ");
+      if (!url) fail("订阅地址不能为空；如需复用已有结果，请在菜单中选择 latest。");
+      if (!/^https?:\/\//i.test(url)) fail("订阅地址必须以 http:// 或 https:// 开头。");
+      subscriptionContent = await download(url);
+    } else {
+      parsedResult = loadLatestParsedResult();
+    }
 
-    const providerInput = await promptHidden("请输入要注入 Primary 的订阅地址（留空则依次读取 subscription/sub-inject.txt、subscription/inject.txt，输入不会回显）：\n> ");
-    if (providerInput) {
+    const savedSubscription = findInjectedSubscriptionUrl(root);
+    const primaryOptions = [
+      { value: "none", label: "不注入 Primary", description: "最终配置不包含 Primary 代理提供者" },
+      { value: "manual", label: "手工输入 Primary 地址", description: "地址仅写入本次生成的 dist 配置" }
+    ];
+    if (savedSubscription) {
+      primaryOptions.splice(1, 0, {
+        value: "saved",
+        label: "注入已保存的 Primary 地址",
+        description: `使用 subscription/${savedSubscription.name}`
+      });
+    }
+    const primaryMode = await selectOption("选择 Primary 代理提供者", primaryOptions, savedSubscription ? "saved" : "none");
+    if (primaryMode === "manual") {
+      const providerInput = await promptHidden("请输入要注入 Primary 的订阅地址（输入不会回显）：\n> ");
       interactiveProviderUrl = validateSubscriptionUrl(providerInput);
       if (!interactiveProviderUrl) fail("Primary 订阅地址必须是有效的 http:// 或 https:// URL。");
     }
+    useSavedPrimary = primaryMode === "saved";
   }
 
-  const injectedSubscription = interactiveProviderUrl ? null : findInjectedSubscriptionUrl(root);
+  const injectedSubscription = useSavedPrimary && !interactiveProviderUrl ? findInjectedSubscriptionUrl(root) : null;
   const primaryUrl = interactiveProviderUrl || injectedSubscription?.url || null;
 
   fs.mkdirSync(distDir, { recursive: true });
-  const rawResponsePath = path.join(distDir, rawResponseFileName(runDate));
-  fs.writeFileSync(rawResponsePath, subscriptionContent, { encoding: "utf8", mode: 0o600 });
-  console.log(`原始订阅响应已保存：${rawResponsePath}`);
+  if (subscriptionContent) {
+    parseDirectory = createParseDirectory(runDate);
+    const rawResponsePath = path.join(parseDirectory, "raw.txt");
+    writeSensitiveFile(rawResponsePath, subscriptionContent);
+    console.log(`原始订阅响应已保存：${rawResponsePath}`);
+  }
 
-  const { block: proxyBlock, nodeCount, source } = extractProxyBlock(subscriptionContent);
-
-  let template = fs.readFileSync(templatePath, "utf8");
-  if (!template.includes(marker)) fail("模板中未找到节点占位符。");
-  template = replaceProxyProviders(template, { primaryUrl });
-  const output = template.replace(marker, proxyBlock);
+  if (!parsedResult) parsedResult = extractProxyBlock(subscriptionContent);
+  const { block: proxyBlock, nodeCount, parsedYaml, proxyProviders, source, filteredCount = 0 } = parsedResult;
+  if (subscriptionContent) {
+    const parsedPath = path.join(parseDirectory, "parsed.yaml");
+    const proxiesPath = path.join(parseDirectory, "proxies.yaml");
+    writeSensitiveFile(parsedPath, parsedYaml);
+    writeSensitiveFile(proxiesPath, proxyBlock);
+    updateLatestLink(parseDirectory);
+    console.log(`解析后的 YAML 已保存：${parsedPath}`);
+    console.log(`拆分的 proxies 已保存：${proxiesPath}`);
+    console.log(`latest 已指向：${parseDirectory}`);
+  } else {
+    parseDirectory = parsedResult.artifactDirectory || latestDirectory();
+  }
+  const customTemplate = fs.readFileSync(customTemplatePath, "utf8");
+  const output = composeTemplate({ remoteTemplate: template.content, customTemplate, proxyBlock, parsedProviders: proxyProviders, primaryUrl });
   if ((output.match(/^proxies:\s*$/gm) || []).length !== 1) fail("生成配置中的 proxies: 块数量校验失败。");
 
-  const outputPath = path.join(distDir, outputFileName(runDate));
-  const temporaryPath = path.join(distDir, `.${path.basename(outputPath)}.${process.pid}.tmp`);
+  const outputName = `openclash-${template.fileLabel}-${dateStamp(runDate)}.yaml`;
+  const outputPath = path.join(parseDirectory, outputName);
+  const temporaryPath = path.join(parseDirectory, `.${outputName}.${process.pid}.tmp`);
   fs.writeFileSync(temporaryPath, output, { encoding: "utf8", mode: 0o600 });
   fs.renameSync(temporaryPath, outputPath);
   console.log(`已生成：${outputPath}（${nodeCount} 个节点）`);
+  console.log(`基础模板：${template.name}`);
   console.log(`节点来源：${source}`);
+  if (filteredCount > 0) console.log(`已过滤 ${filteredCount} 个订阅信息节点（流量、重置时间、到期时间）。`);
   if (interactiveProviderUrl) console.log("已注入交互输入的 Primary 订阅。");
   else if (injectedSubscription) console.log(`已注入 Primary 订阅：subscription/${injectedSubscription.name}`);
   console.log("订阅地址未写入仓库；原始响应仅保存在已忽略的 dist 目录。");
