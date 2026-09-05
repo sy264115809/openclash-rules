@@ -2,4 +2,4 @@
 payload:
   - DOMAIN,local.adguard.org
   - DOMAIN-SUFFIX,ant.design
-  - DOMAIN-SUFFIX,ai.ziikoo.com
+  - DOMAIN-SUFFIX,ziikoo.com
