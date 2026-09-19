@@ -3,3 +3,4 @@ payload:
   - DOMAIN,local.adguard.org
   - DOMAIN-SUFFIX,ant.design
   - DOMAIN-SUFFIX,launchosapp.com
+  - DOMAIN-SUFFIX,wzdataspace.com
